@@ -1,0 +1,180 @@
+"""
+Student template code for Project 3
+Student will implement five functions:
+
+slow_closest_pair(cluster_list)
+fast_closest_pair(cluster_list)
+closest_pair_strip(cluster_list, horiz_center, half_width)
+hierarchical_clustering(cluster_list, num_clusters)
+kmeans_clustering(cluster_list, num_clusters, num_iterations)
+
+where cluster_list is a 2D list of clusters in the plane
+"""
+
+import math
+import alg_cluster
+
+
+
+######################################################
+# Code for closest pairs of clusters
+
+def pair_distance(cluster_list, idx1, idx2):
+    """
+    Helper function that computes Euclidean distance between two clusters in a list
+
+    Input: cluster_list is list of clusters, idx1 and idx2 are integer indices for two clusters
+    
+    Output: tuple (dist, idx1, idx2) where dist is distance between
+    cluster_list[idx1] and cluster_list[idx2]
+    """
+    return (cluster_list[idx1].distance(cluster_list[idx2]), min(idx1, idx2), max(idx1, idx2))
+
+
+def slow_closest_pair(cluster_list):
+    """
+    Compute the distance between the closest pair of clusters in a list (slow)
+
+    Input: cluster_list is the list of clusters
+    
+    Output: tuple of the form (dist, idx1, idx2) where the centers of the clusters
+    cluster_list[idx1] and cluster_list[idx2] have minimum distance dist.       
+    """
+    
+    (dist, idx1, idx2) = (float('inf'), -1, -1)
+    for point_u in range(len(cluster_list)):
+        for point_v in range(len(cluster_list)):
+            if point_u != point_v and pair_distance(cluster_list, point_u, point_v)[0] < dist:
+                (dist, idx1, idx2) = pair_distance(cluster_list, point_u, point_v)
+    
+    return (dist, idx1, idx2)
+
+
+
+def fast_closest_pair(cluster_list):
+    """
+    Compute the distance between the closest pair of clusters in a list (fast)
+
+    Input: cluster_list is list of clusters SORTED such that horizontal positions of their
+    centers are in ascending order
+    
+    Output: tuple of the form (dist, idx1, idx2) where the centers of the clusters
+    cluster_list[idx1] and cluster_list[idx2] have minimum distance dist.       
+    """
+    
+    cluster_size = len(cluster_list)
+    if cluster_size <= 3:
+        (dist, idx1, idx2) = slow_closest_pair(cluster_list)
+    else:
+        half = cluster_size // 2
+        cluster_left = cluster_list[0:half]
+        cluster_right = cluster_list[half:]
+        (dist_left, idx1_left, idx2_left) = fast_closest_pair(cluster_left)
+        (dist_right, idx1_right, idx2_right) = fast_closest_pair(cluster_right)
+        (dist, idx1, idx2) = min((dist_left, idx1_left, idx2_left), (dist_right, idx1_right + half, idx2_right + half))
+        mid = (cluster_list[half - 1].horiz_center() + cluster_list[half].horiz_center()) / 2
+        (dist, idx1, idx2) = min((dist, idx1, idx2), closest_pair_strip(cluster_list, mid, dist))
+    
+    return (dist, idx1, idx2)
+
+
+def closest_pair_strip(cluster_list, horiz_center, half_width):
+    """
+    Helper function to compute the closest pair of clusters in a vertical strip
+    
+    Input: cluster_list is a list of clusters produced by fast_closest_pair
+    horiz_center is the horizontal position of the strip's vertical center line
+    half_width is the half the width of the strip (i.e; the maximum horizontal distance
+    that a cluster can lie from the center line)
+
+    Output: tuple of the form (dist, idx1, idx2) where the centers of the clusters
+    cluster_list[idx1] and cluster_list[idx2] lie in the strip and have minimum distance dist.       
+    """
+    
+    lst = []
+    for idxi in range(len(cluster_list)):
+        if abs(cluster_list[idxi].horiz_center() - horiz_center) < half_width:
+            lst.append([cluster_list[idxi].vert_center(), idxi])
+    lst.sort()
+    size_s = len(lst)
+    (dist, idx1, idx2) = (float('inf'), -1, -1)
+    for idxu in range(size_s - 1):
+        for idxv in range(idxu + 1, min(idxu + 3, size_s - 1) + 1):
+            (dist, idx1, idx2) = min((dist, idx1, idx2), pair_distance(cluster_list, lst[idxu][1], lst[idxv][1])) 
+
+    return (dist, idx1, idx2)
+            
+ 
+    
+######################################################################
+# Code for hierarchical clustering
+
+
+def hierarchical_clustering(cluster_list, num_clusters):
+    """
+    Compute a hierarchical clustering of a set of clusters
+    Note: the function may mutate cluster_list
+    
+    Input: List of clusters, integer number of clusters
+    Output: List of clusters whose length is num_clusters
+    """
+    
+    cluster = cluster_list[:]
+    
+    while len(cluster) > num_clusters:
+        hor = []
+        for idx in range(len(cluster)):
+            hor.append([cluster[idx].horiz_center(), idx])
+        hor.sort()
+        cluster = [cluster[idxh[1]] for idxh in hor]
+        pair = fast_closest_pair(cluster)
+        idx1 = pair[1]
+        idx2 = pair[2]
+        ele1 = cluster[idx1]
+        ele2 = cluster[idx2]
+        cluster.append(cluster[idx1].merge_clusters(cluster[idx2]))
+        cluster.remove(ele1)
+        cluster.remove(ele2)
+           
+    return cluster
+
+
+######################################################################
+# Code for k-means clustering
+
+    
+def kmeans_clustering(cluster_list, num_clusters, num_iterations):
+    """
+    Compute the k-means clustering of a set of clusters
+    Note: the function may not mutate cluster_list
+    
+    Input: List of clusters, integers number of clusters and number of iterations
+    Output: List of clusters whose length is num_clusters
+    """
+
+    # position initial clusters at the location of clusters with largest populations
+    
+    cluster_size = len(cluster_list)
+    lst = []
+    for idxi in range(cluster_size):
+        lst.append([cluster_list[idxi].total_population(), cluster_list[idxi].horiz_center(), cluster_list[idxi].vert_center()])
+    lst.sort()
+    cini = []
+    for idxj in range(num_clusters):
+        cini.append([lst[cluster_size - idxj - 1][1], lst[cluster_size - idxj - 1][2]])
+    for idxi in range(1, num_iterations + 1):
+        setc = []
+        for idxm in range(num_clusters):
+            setc.append(alg_cluster.Cluster(set([]), cini[idxm][0], cini[idxm][1], 0, 0))
+        for idxj in range(cluster_size):
+            least = float('inf')
+            for idxf in range(num_clusters):
+                dist = math.sqrt((cluster_list[idxj].horiz_center() - cini[idxf][0]) ** 2 + (cluster_list[idxj].vert_center() - cini[idxf][1]) ** 2)
+                if dist < least:
+                    least = dist
+                    idx = idxf
+            setc[idx].merge_clusters(cluster_list[idxj])
+        for idxf in range(num_clusters):
+            cini[idxf] = [setc[idxf].horiz_center(), setc[idxf].vert_center()]
+    
+    return setc
